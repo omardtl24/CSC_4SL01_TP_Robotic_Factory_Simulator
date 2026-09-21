@@ -62,6 +62,17 @@ public class Robot extends Component {
 		return super.toString() + " battery=" + battery + "]";
 	}
 
+	public boolean isLivelyLocked() {
+		final Position blockedTargetPosition = getBlockedTargetPosition();
+		if (blockedTargetPosition == null) {
+			return false;
+		}
+		final Component otherRobot =
+			getFactory().getMobileComponentAt(blockedTargetPosition, this);
+		return otherRobot != null &&
+			getPosition().equals(((Robot) otherRobot).getBlockedTargetPosition());
+	}
+
 	protected int getSpeed() {
 		return speed;
 	}
@@ -117,13 +128,72 @@ public class Robot extends Component {
 		
 		return targetComponentsIterator.hasNext() ? targetComponentsIterator.next() : null;
 	}
+
+	private Position findFreeNeighbouringPosition(){
+		final Position currentPosition = getPosition();
+		final int x = currentPosition.getxCoordinate();
+		final int y = currentPosition.getyCoordinate();
+		final int x_blocked = blockedTargetPosition.getxCoordinate();
+		final int y_blocked = blockedTargetPosition.getyCoordinate();
+		final int width = ((CircularShape) getShape()).getWidth();
+		final int height = ((CircularShape) getShape()).getHeight();
+		
+		//Closed operation to move in a direction to avoid collision, it might be blocked too, so process may land to on a change grid of position
+		
+		final Position positionCandidate = new Position((int) (x + width * Math.signum(y-y_blocked)),
+				                               (int) (y + height * Math.signum(x-x_blocked)));
+		
+		
+		final PositionedShape shapeCandidate = new RectangularShape(positionCandidate.getxCoordinate(),
+				positionCandidate.getyCoordinate(),
+				                                           2,
+				                                           2);
+		
+		if (!getFactory().hasMobileComponentAt(shapeCandidate, this)) {
+			System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), positionCandidate, currentPosition);
+			return positionCandidate;
+		}
+		
+		// Generic grid search solution (Feasible only to reallocate robots if they are stuck in a corner, not to escape from live-lock)
+		
+		final Position[] neighbouringPositions = new Position[]{
+				new Position(x - width, y),
+				new Position(x + width, y),
+				new Position(x, y - height),
+				new Position(x, y + height)
+		};
+		
+		for (final Position position : neighbouringPositions) {
+			final PositionedShape shape = new RectangularShape(position.getxCoordinate(),
+															   position.getyCoordinate(),
+															   2,
+															   2);
+			
+			if (!getFactory().hasMobileComponentAt(shape, this)) {
+				System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), position, currentPosition);
+				return position;
+			}
+		}
+		
+		return null;
+	}
 	
 	private int moveToNextPathPosition() {
 		final Motion motion = computeMotion();
 		
-		final int displacement = motion == null ? 0 : motion.moveToTarget();
+		int displacement = motion == null ? 0 : motion.moveToTarget();
 			
-		notifyObservers();
+		if (displacement != 0){
+			notifyObservers();
+		}
+		else if (isLivelyLocked()) {
+			final Position freeNeighbouringPosition = findFreeNeighbouringPosition();
+			if (freeNeighbouringPosition != null) {
+				blockedTargetPosition = freeNeighbouringPosition;
+				displacement = moveToNextPathPosition();
+				computePathToCurrentTargetComponent();
+			}
+		}
 		
 		return displacement;
 	}
