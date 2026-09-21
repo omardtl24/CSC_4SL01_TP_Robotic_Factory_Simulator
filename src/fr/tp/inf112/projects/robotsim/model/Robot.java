@@ -140,8 +140,8 @@ public class Robot extends Component {
 		
 		//Closed operation to move in a direction to avoid collision, it might be blocked too, so process may land to on a change grid of position
 		
-		final Position positionCandidate = new Position((int) (x + width * Math.signum(y-y_blocked)),
-				                               (int) (y + height * Math.signum(x-x_blocked)));
+		final Position positionCandidate = new Position(x + width * Integer.signum(y-y_blocked),
+				                                        y + height * Integer.signum(x-x_blocked));
 		
 		
 		final PositionedShape shapeCandidate = new RectangularShape(positionCandidate.getxCoordinate(),
