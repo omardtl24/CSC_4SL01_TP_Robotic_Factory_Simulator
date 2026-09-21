@@ -149,7 +149,7 @@ public class Robot extends Component {
 				                                           2,
 				                                           2);
 		
-		if (!getFactory().hasMobileComponentAt(shapeCandidate, this)) {
+		if (!getFactory().hasObstacleAt(shapeCandidate)) {
 			System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), positionCandidate, currentPosition);
 			return positionCandidate;
 		}
@@ -169,7 +169,7 @@ public class Robot extends Component {
 															   2,
 															   2);
 			
-			if (!getFactory().hasMobileComponentAt(shape, this)) {
+			if (!getFactory().hasObstacleAt(shape)) {
 				System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), position, currentPosition);
 				return position;
 			}
