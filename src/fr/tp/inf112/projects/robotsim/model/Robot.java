@@ -33,10 +33,15 @@ public class Robot extends Component {
 	private transient Iterator<Position> currentPathPositionsIter;
 	
 	private transient boolean blocked;
-	
-	private Position blockedTargetPosition;
-	
+
+	// Read by other robots' threads from isLivelyLocked(), so visibility across threads matters.
+	private volatile Position blockedTargetPosition;
+
 	private FactoryPathFinder pathFinder;
+
+	// Grid position currently locked by this robot; held between behave() calls to keep other
+	// robots from moving onto this robot's cell, and released as soon as this robot moves away from it.
+	private transient Position lockedPosition;
 
 	public Robot(final Factory factory,
 				 final FactoryPathFinder pathFinder,
@@ -178,13 +183,40 @@ public class Robot extends Component {
 		return null;
 	}
 	
+	/**
+	 * Claims the lock of the robot's own starting position the first time it moves, so that no other
+	 * robot can move onto this robot's cell while it hasn't started moving yet.
+	 */
+	private void ensureCurrentPositionLocked() {
+		if (lockedPosition == null) {
+			final Position currentPosition = getPosition();
+
+			getFactory().lockPosition(currentPosition);
+
+			lockedPosition = new Position(currentPosition.getxCoordinate(), currentPosition.getyCoordinate());
+		}
+	}
+
 	private int moveToNextPathPosition() {
+		ensureCurrentPositionLocked();
+
 		final Motion motion = computeMotion();
-		
+
 		int displacement = motion == null ? 0 : motion.moveToTarget();
-			
+
 		if (displacement != 0){
+			// The move succeeded: this robot now owns the lock of the target position (acquired in
+			// computeMotion()), so it can safely release the lock of the position it just left.
+			getFactory().unlockPosition(lockedPosition);
+
+			lockedPosition = new Position(motion.getTargetPosition().getxCoordinate(), motion.getTargetPosition().getyCoordinate());
+
 			notifyObservers();
+		}
+		else if (motion != null) {
+			// The lock on the target position was acquired but the robot did not actually move there
+			// (e.g. target equals current position): release it immediately to avoid leaking it.
+			getFactory().unlockPosition(motion.getTargetPosition());
 		}
 		else if (isLivelyLocked()) {
 			final Position freeNeighbouringPosition = findFreeNeighbouringPosition();
@@ -194,42 +226,62 @@ public class Robot extends Component {
 				computePathToCurrentTargetComponent();
 			}
 		}
-		
+
 		return displacement;
 	}
-	
+
 	private void computePathToCurrentTargetComponent() {
 		final List<Position> currentPathPositions = pathFinder.findPath(this, currTargetComponent);
 		currentPathPositionsIter = currentPathPositions.iterator();
 	}
-	
+
 	private Motion computeMotion() {
 		if (!currentPathPositionsIter.hasNext()) {
 
 			// There is no free path to the target
 			blocked = true;
-			
+
 			return null;
 		}
-		
-		
+
 		final Position targetPosition = getTargetPosition();
+
+		// Lock the target grid cell before checking it for occupancy, so that no other robot can slip
+		// into it between the check and the actual move. If another robot already holds the lock,
+		// memorize the blocked target position and retry on the next behave() tick.
+		if (!getFactory().tryLockPosition(targetPosition)) {
+			this.blockedTargetPosition = targetPosition;
+
+			return null;
+		}
+
 		final PositionedShape shape = new RectangularShape(targetPosition.getxCoordinate(),
 														   targetPosition.getyCoordinate(),
 				   										   2,
 				   										   2);
-		
-		// If there is another robot, memorize the blocked target position for the next run
+
+		// If there is another robot already there, memorize the blocked target position for the next run
 		if (getFactory().hasMobileComponentAt(shape, this)) {
+			getFactory().unlockPosition(targetPosition);
+
 			this.blockedTargetPosition = targetPosition;
-			
+
 			return null;
 		}
 
 		// Reset the memorized position
 		this.blockedTargetPosition = null;
-			
+
 		return new Motion(getPosition(), targetPosition);
+	}
+
+	@Override
+	protected void onSimulationStopped() {
+		if (lockedPosition != null) {
+			getFactory().unlockPosition(lockedPosition);
+
+			lockedPosition = null;
+		}
 	}
 	
 	private Position getTargetPosition() {

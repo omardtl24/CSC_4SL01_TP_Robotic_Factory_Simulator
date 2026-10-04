@@ -3,6 +3,7 @@ package fr.tp.inf112.projects.robotsim.model;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 import fr.tp.inf112.projects.canvas.controller.Observable;
 import fr.tp.inf112.projects.canvas.controller.Observer;
@@ -26,6 +27,8 @@ public class Factory extends Component implements Canvas, Observable {
 	
 	private int pathResolution;
 
+	private final ReentrantLock[][] positionLocks;
+
 	public Factory(final int width,
 				   final int height,
 				   final String name,
@@ -36,6 +39,12 @@ public class Factory extends Component implements Canvas, Observable {
 		components = new ArrayList<>();
 		observers = null;
 		simulationStarted = false;
+		positionLocks = new ReentrantLock[width / pathResolution][height / pathResolution];
+		for (int i = 0; i < positionLocks.length; i++) {
+			for (int j = 0; j < positionLocks[i].length; j++) {
+				positionLocks[i][j] = new ReentrantLock();
+			}
+		}
 	}
 	
 	protected List<Observer> getObservers() {
@@ -96,6 +105,33 @@ public class Factory extends Component implements Canvas, Observable {
 		return pathResolution;
 	}
 
+	private ReentrantLock getPositionLock(final Position position) {
+		final int xIndex = position.getxCoordinate() / pathResolution;
+		final int yIndex = position.getyCoordinate() / pathResolution;
+
+		return positionLocks[xIndex][yIndex];
+	}
+
+	/**
+	 * Blocks the calling thread until the lock guarding the grid cell of the given position is acquired.
+	 */
+	public void lockPosition(final Position position) {
+		getPositionLock(position).lock();
+	}
+
+	/**
+	 * Attempts to acquire the lock guarding the grid cell of the given position without waiting.
+	 *
+	 * @return true if the lock was acquired, false if another robot is currently holding it.
+	 */
+	public boolean tryLockPosition(final Position position) {
+		return getPositionLock(position).tryLock();
+	}
+
+	public void unlockPosition(final Position position) {
+		getPositionLock(position).unlock();
+	}
+
 	public void setPathResolution(int pathResolution) {
 		this.pathResolution = pathResolution;
 	}
@@ -113,17 +149,8 @@ public class Factory extends Component implements Canvas, Observable {
 		if (!isSimulationStarted()) {
 			this.simulationStarted = true;
 			notifyObservers();
-
-			while (isSimulationStarted()) {
-				behave();
-				
-				try {
-					Thread.sleep(100);
-				}
-				catch (final InterruptedException ex) {
-					System.err.println("Simulation was abruptly interrupted");
-				}
-			}
+            // Remove loop and call behave() on each component in a separate thread to avoid blocking the main thread
+			behave();
 		}
 	}
 
@@ -137,10 +164,30 @@ public class Factory extends Component implements Canvas, Observable {
 
 	@Override
 	public boolean behave() {
+
 		boolean behaved = true;
-		
-		for (final Component component : getComponents()) {
-			behaved = component.behave() || behaved;
+		ArrayList<Thread> threads = new ArrayList<>();
+
+		//Build threads for each mobile component to behave in parallel
+		for (int i = 0; i < getComponents().size(); i++) {
+			final Component component = getComponents().get(i);
+			if (component.isMobile()) {
+				threads.add(new Thread(component));
+			}
+
+		}
+		//Start all threads
+		for (Thread thread : threads) {
+			thread.start();
+		}
+		//Wait for all threads to finish
+		for (Thread thread : threads) {
+			try {
+				thread.join();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				behaved = false;
+			}
 		}
 		
 		return behaved;

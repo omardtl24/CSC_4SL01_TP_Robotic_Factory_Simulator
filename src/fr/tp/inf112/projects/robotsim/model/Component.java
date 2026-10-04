@@ -7,7 +7,7 @@ import fr.tp.inf112.projects.canvas.model.Style;
 import fr.tp.inf112.projects.robotsim.model.shapes.PositionedShape;
 import fr.tp.inf112.projects.canvas.model.Shape;
 
-public abstract class Component implements Figure, Serializable {
+public abstract class Component implements Figure, Serializable, Runnable {
 	
 	private static final long serialVersionUID = -5960950869184030220L;
 
@@ -135,5 +135,27 @@ public abstract class Component implements Figure, Serializable {
 	
 	public boolean isSimulationStarted() {
 		return getFactory().isSimulationStarted();
+	}
+
+	@Override
+	public void run() {
+		try {
+			while (isSimulationStarted()) {
+				behave();
+				Thread.sleep(50);
+			}
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			onSimulationStopped();
+		}
+	}
+
+	/**
+	 * Called on this component's own worker thread right before it terminates because the simulation
+	 * was stopped. Subclasses that acquire thread-owned resources (e.g. locks) during behave() should
+	 * release them here, since that is guaranteed to still run on the owning thread.
+	 */
+	protected void onSimulationStopped() {
 	}
 }
