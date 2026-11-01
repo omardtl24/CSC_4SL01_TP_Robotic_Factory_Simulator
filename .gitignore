@@ -1,3 +1,5 @@
-/bin/
-/enounces/
-.vscode/
+**/bin/
+**/enounces/
+**/.vscode/
+**/*.factory
+**.log**
