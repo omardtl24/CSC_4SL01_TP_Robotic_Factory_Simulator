@@ -37,6 +37,9 @@ public class Robot extends Component {
 	// Read by other robots' threads from isLivelyLocked(), so visibility across threads matters.
 	private volatile Position blockedTargetPosition;
 
+	// True while the robot is trying to step aside to a free neighbouring cell to solve a livelock.
+	private transient boolean detouring;
+
 	private FactoryPathFinder pathFinder;
 
 	// Grid position currently locked by this robot; held between behave() calls to keep other
@@ -60,6 +63,7 @@ public class Robot extends Component {
 		speed = 5;
 		blocked = false;
 		blockedTargetPosition = null;
+		detouring = false;
 	}
 
 	@Override
@@ -140,47 +144,57 @@ public class Robot extends Component {
 		final int y = currentPosition.getyCoordinate();
 		final int x_blocked = blockedTargetPosition.getxCoordinate();
 		final int y_blocked = blockedTargetPosition.getyCoordinate();
-		final int width = ((CircularShape) getShape()).getWidth();
-		final int height = ((CircularShape) getShape()).getHeight();
-		
+
+		// Move by the path grid resolution (the smallest step of the path finder and of the position locks),
+		// so that the robot always lands on a grid cell and can't get stuck between two cells.
+		final int step = getFactory().getPathResolution();
+
 		//Closed operation to move in a direction to avoid collision, it might be blocked too, so process may land to on a change grid of position
-		
-		final Position positionCandidate = new Position(x + width * Integer.signum(y-y_blocked),
-				                                        y + height * Integer.signum(x-x_blocked));
-		
-		
-		final PositionedShape shapeCandidate = new RectangularShape(positionCandidate.getxCoordinate(),
-				positionCandidate.getyCoordinate(),
-				                                           2,
-				                                           2);
-		
-		if (!getFactory().hasObstacleAt(shapeCandidate)) {
+
+		final Position positionCandidate = new Position(x + step * Integer.signum(y-y_blocked),
+				                                        y + step * Integer.signum(x-x_blocked));
+
+		if (isFreeGridPosition(positionCandidate)) {
 			System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), positionCandidate, currentPosition);
 			return positionCandidate;
 		}
-		
+
 		// Generic grid search solution (Feasible only to reallocate robots if they are stuck in a corner, not to escape from live-lock)
-		
+
 		final Position[] neighbouringPositions = new Position[]{
-				new Position(x - width, y),
-				new Position(x + width, y),
-				new Position(x, y - height),
-				new Position(x, y + height)
+				new Position(x - step, y),
+				new Position(x + step, y),
+				new Position(x, y - step),
+				new Position(x, y + step)
 		};
-		
+
 		for (final Position position : neighbouringPositions) {
-			final PositionedShape shape = new RectangularShape(position.getxCoordinate(),
-															   position.getyCoordinate(),
-															   2,
-															   2);
-			
-			if (!getFactory().hasObstacleAt(shape)) {
+			if (isFreeGridPosition(position)) {
 				System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), position, currentPosition);
 				return position;
 			}
 		}
-		
+
 		return null;
+	}
+
+	/**
+	 * Checks that the given position is inside the factory, and that its whole grid cell is free of
+	 * obstacles and of other robots, using the same cell size as the path finder.
+	 */
+	private boolean isFreeGridPosition(final Position position) {
+		final int step = getFactory().getPathResolution();
+		final int xCoordinate = position.getxCoordinate();
+		final int yCoordinate = position.getyCoordinate();
+
+		if (xCoordinate < 0 || yCoordinate < 0 ||
+			xCoordinate + step > getFactory().getWidth() || yCoordinate + step > getFactory().getHeight()) {
+			return false;
+		}
+
+		final PositionedShape cell = new RectangularShape(xCoordinate, yCoordinate, step, step);
+
+		return !getFactory().hasObstacleAt(cell) && !getFactory().hasMobileComponentAt(cell, this);
 	}
 	
 	/**
@@ -205,11 +219,20 @@ public class Robot extends Component {
 		int displacement = motion == null ? 0 : motion.moveToTarget();
 
 		if (displacement != 0){
+			// The robot is moving again, so it is no longer blocked
+			blocked = false;
+
 			// The move succeeded: this robot now owns the lock of the target position (acquired in
 			// computeMotion()), so it can safely release the lock of the position it just left.
 			getFactory().unlockPosition(lockedPosition);
 
 			lockedPosition = new Position(motion.getTargetPosition().getxCoordinate(), motion.getTargetPosition().getyCoordinate());
+
+			// The robot stepped aside to solve a livelock: replan from its new position
+			if (detouring) {
+				detouring = false;
+				computePathToCurrentTargetComponent();
+			}
 
 			notifyObservers();
 		}
@@ -218,12 +241,22 @@ public class Robot extends Component {
 			// (e.g. target equals current position): release it immediately to avoid leaking it.
 			getFactory().unlockPosition(motion.getTargetPosition());
 		}
+		else if (detouring) {
+			// The detour cell was taken in the meantime: give up this detour and replan from the current
+			// position. If the livelock is still there, it will be detected again and another detour tried.
+			detouring = false;
+			blockedTargetPosition = null;
+			computePathToCurrentTargetComponent();
+		}
 		else if (isLivelyLocked()) {
 			final Position freeNeighbouringPosition = findFreeNeighbouringPosition();
+
+			// If no neighbour is free (e.g. borders and other robots all around), blockedTargetPosition is
+			// kept, so the livelock is checked again and solving it is retried on the next behave() tick.
 			if (freeNeighbouringPosition != null) {
 				blockedTargetPosition = freeNeighbouringPosition;
+				detouring = true;
 				displacement = moveToNextPathPosition();
-				computePathToCurrentTargetComponent();
 			}
 		}
 
@@ -233,15 +266,27 @@ public class Robot extends Component {
 	private void computePathToCurrentTargetComponent() {
 		final List<Position> currentPathPositions = pathFinder.findPath(this, currTargetComponent);
 		currentPathPositionsIter = currentPathPositions.iterator();
+
+		// A path was found again, so the robot is no longer blocked
+		if (!currentPathPositions.isEmpty()) {
+			blocked = false;
+		}
 	}
 
 	private Motion computeMotion() {
-		if (!currentPathPositionsIter.hasNext()) {
+		// A memorized blocked position must be retried even if the path has no more positions
+		// (e.g. the robot was waiting to enter the last cell of its path).
+		if (blockedTargetPosition == null && !currentPathPositionsIter.hasNext()) {
+			// The path is used up but the target was not reached (e.g. no path was found): try to
+			// compute a new one, so the robot keeps retrying on every tick until a path is available.
+			computePathToCurrentTargetComponent();
 
-			// There is no free path to the target
-			blocked = true;
+			if (!currentPathPositionsIter.hasNext()) {
+				// There is no free path to the target
+				blocked = true;
 
-			return null;
+				return null;
+			}
 		}
 
 		final Position targetPosition = getTargetPosition();
