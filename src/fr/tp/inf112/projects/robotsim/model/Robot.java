@@ -3,6 +3,7 @@ package fr.tp.inf112.projects.robotsim.model;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.logging.Logger;
 
 import fr.tp.inf112.projects.canvas.model.Style;
 import fr.tp.inf112.projects.canvas.model.impl.RGBColor;
@@ -15,6 +16,8 @@ import fr.tp.inf112.projects.robotsim.model.shapes.RectangularShape;
 public class Robot extends Component {
 	
 	private static final long serialVersionUID = -1218857231970296747L;
+
+	private static final Logger LOGGER = Logger.getLogger(Robot.class.getName());
 
 	private static final Style STYLE = new ComponentStyle(RGBColor.GREEN, RGBColor.BLACK, 3.0f, null);
 
@@ -155,7 +158,7 @@ public class Robot extends Component {
 				                                        y + step * Integer.signum(x-x_blocked));
 
 		if (isFreeGridPosition(positionCandidate)) {
-			System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), positionCandidate, currentPosition);
+			LOGGER.info(getName() + " has found a free neighbour after livelock to " + positionCandidate + " from " + currentPosition);
 			return positionCandidate;
 		}
 
@@ -170,7 +173,7 @@ public class Robot extends Component {
 
 		for (final Position position : neighbouringPositions) {
 			if (isFreeGridPosition(position)) {
-				System.out.printf("%s has found a free neighbour after livelock to %s from %s\n", getName(), position, currentPosition);
+				LOGGER.info(getName() + " has found a free neighbour after livelock to " + position + " from " + currentPosition);
 				return position;
 			}
 		}

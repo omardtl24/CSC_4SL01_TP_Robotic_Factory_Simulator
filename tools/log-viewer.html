@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulator Log Viewer</title>
+<!--
+  Offline viewer for the XML log files written by java.util.logging.XMLFormatter
+  (e.g. config/robotsim0.log). Open this file in a browser, then drop a log file on the page
+  or pick it with the button. Nothing is uploaded: the file is read locally by the browser.
+-->
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --border: #d0d7de; --row-alt: #f6f8fa;
+    --head: #eef1f4; --accent: #0969da;
+    --severe: #cf222e; --warning: #9a6700; --info: #1a7f37; --config: #8250df; --fine: #656d76;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --border: #30363d; --row-alt: #161b22;
+      --head: #1c2128; --accent: #4493f8;
+      --severe: #ff7b72; --warning: #d29922; --info: #3fb950; --config: #bc8cff; --fine: #8d96a0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg);
+           border-bottom: 1px solid var(--border); padding: 12px 16px;
+           display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  h1 { font-size: 16px; margin: 0 8px 0 0; }
+  label { color: var(--muted); font-size: 13px; }
+  input[type=search], select { font: inherit; color: var(--fg); background: var(--bg);
+           border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+  input[type=search] { min-width: 220px; }
+  .btn { font: inherit; color: #fff; background: var(--accent); border: 0; border-radius: 6px;
+         padding: 5px 12px; cursor: pointer; }
+  #status { color: var(--muted); font-size: 13px; margin-left: auto; }
+  #drop { margin: 40px auto; max-width: 560px; padding: 40px 24px; text-align: center;
+          border: 2px dashed var(--border); border-radius: 12px; color: var(--muted); }
+  body.dragging #drop, body.dragging main { outline: 2px dashed var(--accent); outline-offset: -6px; }
+  main { padding: 0 16px 24px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--head); cursor: pointer; user-select: none; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  td.time, td.thread, td.seq { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
+  td.src { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+  td.msg { white-space: pre-wrap; word-break: break-word; min-width: 280px; }
+  .lvl { font-weight: 600; font-size: 12px; }
+  .SEVERE { color: var(--severe); } .WARNING { color: var(--warning); } .INFO { color: var(--info); }
+  .CONFIG { color: var(--config); } .FINE, .FINER, .FINEST { color: var(--fine); }
+  details { margin-top: 4px; }
+  summary { cursor: pointer; color: var(--severe); }
+  pre { margin: 4px 0 0; font-size: 12px; white-space: pre-wrap; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Simulator Log Viewer</h1>
+  <button class="btn" id="pick">Open log file…</button>
+  <input type="file" id="file" accept=".log,.xml" hidden>
+  <label>Min level
+    <select id="level">
+      <option value="0">ALL</option>
+      <option value="300">FINEST</option>
+      <option value="400">FINER</option>
+      <option value="500">FINE</option>
+      <option value="700">CONFIG</option>
+      <option value="800">INFO</option>
+      <option value="900">WARNING</option>
+      <option value="1000">SEVERE</option>
+    </select>
+  </label>
+  <label>Logger
+    <select id="logger"><option value="">All loggers</option></select>
+  </label>
+  <input type="search" id="search" placeholder="Search messages…">
+  <span id="status">No file loaded</span>
+</header>
+
+<div id="drop">Drop a log file here (e.g. <code>config/robotsim0.log</code>)<br>or use “Open log file…”.</div>
+
+<main hidden>
+  <table>
+    <thead>
+      <tr>
+        <th data-key="sequence">#</th>
+        <th data-key="millis">Time</th>
+        <th data-key="levelValue">Level</th>
+        <th data-key="logger">Logger</th>
+        <th data-key="source">Source</th>
+        <th data-key="thread">Thread</th>
+        <th data-key="message">Message</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</main>
+
+<script>
+  const LEVELS = { SEVERE: 1000, WARNING: 900, INFO: 800, CONFIG: 700, FINE: 500, FINER: 400, FINEST: 300 };
+  const $ = (id) => document.getElementById(id);
+  let records = [];
+  let sortKey = 'sequence', sortAsc = true;
+
+  const text = (el, tag) => {
+    const child = el.getElementsByTagName(tag)[0];
+    return child ? child.textContent : '';
+  };
+  const shortName = (name) => name.split('.').pop();
+
+  function parse(xmlText) {
+    // Drop the DOCTYPE (it references a logger.dtd that doesn't exist), and close the root element
+    // if the simulator is still running and the file is not finished yet.
+    let src = xmlText.replace(/<!DOCTYPE[^>]*>/, '');
+    if (!/<\/log>\s*$/.test(src)) src += '</log>';
+
+    const doc = new DOMParser().parseFromString(src, 'application/xml');
+    const error = doc.getElementsByTagName('parsererror')[0];
+    if (error) throw new Error(error.textContent.trim().split('\n')[0]);
+
+    return [...doc.getElementsByTagName('record')].map((r) => {
+      const level = text(r, 'level');
+      const exception = r.getElementsByTagName('exception')[0];
+      let exceptionText = '';
+      if (exception) {
+        const frames = [...exception.getElementsByTagName('frame')].map((f) =>
+          `    at ${text(f, 'class')}.${text(f, 'method')}${text(f, 'line') ? ':' + text(f, 'line') : ''}`);
+        exceptionText = [text(exception, 'message'), ...frames].join('\n');
+      }
+      const cls = text(r, 'class');
+      return {
+        sequence: Number(text(r, 'sequence')),
+        millis: Number(text(r, 'millis')),
+        level,
+        levelValue: LEVELS[level] ?? (Number(level) || 0),
+        logger: text(r, 'logger'),
+        source: cls ? `${shortName(cls)}.${text(r, 'method')}` : '',
+        sourceFull: cls ? `${cls}.${text(r, 'method')}` : '',
+        thread: Number(text(r, 'thread')),
+        message: text(r, 'message'),
+        exceptionText,
+      };
+    });
+  }
+
+  function formatTime(millis) {
+    const d = new Date(millis);
+    const pad = (n, w = 2) => String(n).padStart(w, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+           `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+  }
+
+  function cell(tr, className, value, title) {
+    const td = tr.insertCell();
+    if (className) td.className = className;
+    td.textContent = value;
+    if (title) td.title = title;
+    return td;
+  }
+
+  function render() {
+    const minLevel = Number($('level').value);
+    const logger = $('logger').value;
+    const query = $('search').value.trim().toLowerCase();
+
+    const visible = records
+      .filter((r) => r.levelValue >= minLevel)
+      .filter((r) => !logger || r.logger === logger)
+      .filter((r) => !query || (r.message + ' ' + r.exceptionText + ' ' + r.sourceFull).toLowerCase().includes(query))
+      .sort((a, b) => {
+        const x = a[sortKey], y = b[sortKey];
+        const cmp = typeof x === 'number' ? x - y : String(x).localeCompare(String(y));
+        return sortAsc ? cmp : -cmp;
+      });
+
+    const tbody = $('rows');
+    tbody.replaceChildren();
+    for (const r of visible) {
+      const tr = tbody.insertRow();
+      cell(tr, 'seq', r.sequence);
+      cell(tr, 'time', formatTime(r.millis));
+      const lvl = cell(tr, '', '');
+      const span = document.createElement('span');
+      span.className = `lvl ${r.level}`;
+      span.textContent = r.level;
+      lvl.appendChild(span);
+      cell(tr, 'src', shortName(r.logger), r.logger);
+      cell(tr, 'src', r.source, r.sourceFull);
+      cell(tr, 'thread', r.thread);
+      const msg = cell(tr, 'msg', r.message);
+      if (r.exceptionText) {
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = 'Exception';
+        const pre = document.createElement('pre');
+        pre.textContent = r.exceptionText;
+        details.append(summary, pre);
+        msg.appendChild(details);
+      }
+    }
+    $('status').textContent = `${visible.length} of ${records.length} records`;
+    document.querySelectorAll('th').forEach((th) => {
+      const arrow = th.dataset.key === sortKey ? (sortAsc ? ' ▲' : ' ▼') : '';
+      th.textContent = th.textContent.replace(/ [▲▼]$/, '') + arrow;
+    });
+  }
+
+  function load(file) {
+    file.text().then((content) => {
+      try {
+        records = parse(content);
+      } catch (e) {
+        $('status').textContent = `Could not read ${file.name}: ${e.message}`;
+        return;
+      }
+      const loggers = [...new Set(records.map((r) => r.logger))].sort();
+      $('logger').replaceChildren(new Option('All loggers', ''), ...loggers.map((l) => new Option(l, l)));
+      $('drop').hidden = true;
+      document.querySelector('main').hidden = false;
+      document.title = `${file.name} – Simulator Log Viewer`;
+      render();
+    });
+  }
+
+  $('pick').addEventListener('click', () => $('file').click());
+  $('file').addEventListener('change', (e) => e.target.files[0] && load(e.target.files[0]));
+  ['level', 'logger'].forEach((id) => $(id).addEventListener('change', render));
+  $('search').addEventListener('input', render);
+  document.querySelectorAll('th').forEach((th) => th.addEventListener('click', () => {
+    sortAsc = th.dataset.key === sortKey ? !sortAsc : true;
+    sortKey = th.dataset.key;
+    render();
+  }));
+
+  window.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('dragging'); });
+  window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.body.classList.remove('dragging');
+    if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]);
+  });
+</script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 package fr.tp.inf112.projects.robotsim.model;
 
 import java.io.Serializable;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import fr.tp.inf112.projects.canvas.model.Figure;
 import fr.tp.inf112.projects.canvas.model.Style;
@@ -10,6 +12,8 @@ import fr.tp.inf112.projects.canvas.model.Shape;
 public abstract class Component implements Figure, Serializable, Runnable {
 	
 	private static final long serialVersionUID = -5960950869184030220L;
+
+	private static final Logger LOGGER = Logger.getLogger(Component.class.getName());
 
 	private String id;
 
@@ -145,7 +149,7 @@ public abstract class Component implements Figure, Serializable, Runnable {
 				Thread.sleep(50);
 			}
 		} catch (InterruptedException e) {
-			e.printStackTrace();
+			LOGGER.log(Level.SEVERE, "Simulation thread of " + getName() + " was interrupted.", e);
 		} finally {
 			onSimulationStopped();
 		}
