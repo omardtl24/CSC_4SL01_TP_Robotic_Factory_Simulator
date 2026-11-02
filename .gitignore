@@ -1,5 +1,8 @@
 **/bin/
+**/target/
 **/enounces/
 **/.vscode/
 **/*.factory
-**.log**
+**.log
+**/*.log.lck
+robotsim/data/

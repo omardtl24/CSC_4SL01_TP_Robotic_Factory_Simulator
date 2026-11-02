@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>fr.tp.inf112.projects</groupId>
+		<artifactId>robotsim-parent</artifactId>
+		<version>1.0.0-SNAPSHOT</version>
+	</parent>
+
+	<artifactId>robotsim</artifactId>
+
+	<name>Robotsim</name>
+	<description>Factory model, Swing simulator and persistence server.</description>
+
+	<properties>
+		<robotsim.libs.dir>${project.basedir}/../libs</robotsim.libs.dir>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.jgrapht</groupId>
+			<artifactId>jgrapht-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>fr.tp.inf112.projects</groupId>
+			<artifactId>canvas-viewer</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>fr.tp.inf112.projects</groupId>
+			<artifactId>graph</artifactId>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<!-- mvn -pl robotsim compile exec:exec@persistence (or @simulator) runs a program from this directory,
+				 so that it reads its .env file. -->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<configuration>
+					<executable>java</executable>
+					<workingDirectory>${project.basedir}</workingDirectory>
+					<!-- The runtime classpath does not contain the system scoped libraries. -->
+					<classpathScope>compile</classpathScope>
+				</configuration>
+				<executions>
+					<execution>
+						<id>persistence</id>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<arguments>
+								<argument>-Djava.util.logging.config.file=config/logging.properties</argument>
+								<argument>-classpath</argument>
+								<classpath/>
+								<argument>fr.tp.inf112.projects.robotsim.persistence.PersistenceServer</argument>
+							</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>simulator</id>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<arguments>
+								<argument>-Djava.util.logging.config.file=config/logging.properties</argument>
+								<argument>-classpath</argument>
+								<classpath/>
+								<argument>fr.tp.inf112.projects.robotsim.app.SimulatorApplication</argument>
+							</arguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>

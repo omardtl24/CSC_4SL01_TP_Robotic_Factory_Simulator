@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>fr.tp.inf112.projects</groupId>
+	<artifactId>robotsim-parent</artifactId>
+	<version>1.0.0-SNAPSHOT</version>
+	<packaging>pom</packaging>
+
+	<name>Robotic Factory Simulator</name>
+
+	<modules>
+		<module>robotsim</module>
+		<module>simulation-service</module>
+	</modules>
+
+	<properties>
+		<maven.compiler.release>17</maven.compiler.release>
+		<!-- Keeps the parameter names in the class files, as spring-boot-starter-parent does, so that Spring can bind
+			 @PathVariable parameters to the names used in the URL templates. -->
+		<maven.compiler.parameters>true</maven.compiler.parameters>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<!-- Directory of the course libraries, relative to the directory of the POM using it: the modules override it
+			 with ${project.basedir}/../libs, since their directory is a child of the root one. -->
+		<robotsim.libs.dir>${project.basedir}/libs</robotsim.libs.dir>
+		<!-- Spring Boot 3 still uses Jackson 2 (com.fasterxml.jackson), as in the exercise statement. -->
+		<spring-boot.version>3.5.6</spring-boot.version>
+		<jgrapht.version>1.5.2</jgrapht.version>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- Aligns the versions of Jackson and the other libraries of the plain robotsim module with Spring Boot. -->
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-dependencies</artifactId>
+				<version>${spring-boot.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>fr.tp.inf112.projects</groupId>
+				<artifactId>robotsim</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.jgrapht</groupId>
+				<artifactId>jgrapht-core</artifactId>
+				<version>${jgrapht.version}</version>
+			</dependency>
+			<!-- Course libraries that are not published on Maven Central. -->
+			<dependency>
+				<groupId>fr.tp.inf112.projects</groupId>
+				<artifactId>canvas-viewer</artifactId>
+				<version>1.0</version>
+				<scope>system</scope>
+				<systemPath>${robotsim.libs.dir}/canvas-viewer.jar</systemPath>
+			</dependency>
+			<dependency>
+				<groupId>fr.tp.inf112.projects</groupId>
+				<artifactId>graph</artifactId>
+				<version>1.0</version>
+				<scope>system</scope>
+				<systemPath>${robotsim.libs.dir}/graph.jar</systemPath>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<!-- Same versions as Spring Boot. Without them, Maven uses old defaults (e.g. maven-compiler-plugin 3.1, which
+			 ignores maven.compiler.release and compiles for Java 5). -->
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-clean-plugin</artifactId>
+					<version>3.4.1</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-resources-plugin</artifactId>
+					<version>3.3.1</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>3.14.0</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-jar-plugin</artifactId>
+					<version>3.4.2</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-install-plugin</artifactId>
+					<version>3.1.4</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-deploy-plugin</artifactId>
+					<version>3.1.4</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-surefire-plugin</artifactId>
+					<version>3.5.4</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-dependency-plugin</artifactId>
+					<version>3.8.1</version>
+				</plugin>
+				<plugin>
+					<groupId>org.codehaus.mojo</groupId>
+					<artifactId>exec-maven-plugin</artifactId>
+					<version>3.5.0</version>
+				</plugin>
+				<plugin>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-maven-plugin</artifactId>
+					<version>${spring-boot.version}</version>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+	</build>
+</project>

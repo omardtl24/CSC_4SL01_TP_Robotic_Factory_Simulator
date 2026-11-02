@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>fr.tp.inf112.projects</groupId>
+		<artifactId>robotsim-parent</artifactId>
+		<version>1.0.0-SNAPSHOT</version>
+	</parent>
+
+	<groupId>fr.tp.slr201.projects</groupId>
+	<artifactId>simulation-service</artifactId>
+
+	<name>Robotsim Simulation Service</name>
+	<description>Spring Boot microservice simulating the factory models read from the persistence server.</description>
+
+	<properties>
+		<robotsim.libs.dir>${project.basedir}/../libs</robotsim.libs.dir>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>fr.tp.inf112.projects</groupId>
+			<artifactId>robotsim</artifactId>
+		</dependency>
+		<!-- System scoped dependencies are not transitive. -->
+		<dependency>
+			<groupId>fr.tp.inf112.projects</groupId>
+			<artifactId>canvas-viewer</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>fr.tp.inf112.projects</groupId>
+			<artifactId>graph</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<includeSystemScope>true</includeSystemScope>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>repackage</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>

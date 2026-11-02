@@ -1,0 +1,1 @@
+org.springframework.boot.env.EnvironmentPostProcessor=fr.tp.slr201.projects.robotsim.service.simulation.DotEnvEnvironmentPostProcessor
