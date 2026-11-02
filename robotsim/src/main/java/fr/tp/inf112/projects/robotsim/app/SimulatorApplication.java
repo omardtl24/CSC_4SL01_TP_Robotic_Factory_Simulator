@@ -41,19 +41,24 @@ public class SimulatorApplication {
 		
 		final String persistenceHost;
 		final int persistencePort;
-		
+		final String simulationHost;
+		final int simulationPort;
+
 		try {
 			final ServiceConfig config = ServiceConfig.load(SimulatorApplication.class);
 			persistenceHost = config.getString("persistence.host");
 			persistencePort = config.getInt("persistence.port");
+			simulationHost = config.getString("simulation.host");
+			simulationPort = config.getInt("simulation.port");
 		}
 		catch (final IOException | RuntimeException ex) {
 			LOGGER.log(Level.SEVERE, "Unable to configure the robot simulator.", ex);
-			
+
 			return;
 		}
-		
-		LOGGER.config("Using the persistence server " + persistenceHost + ":" + persistencePort + ".");
+
+		LOGGER.config("Using the persistence server " + persistenceHost + ":" + persistencePort
+					  + " and the simulation service " + simulationHost + ":" + simulationPort + ".");
 		
 		final Factory factory = new Factory(200, 200, "Simple Test Puck Factory", 5);
 		final Room room1 = new Room(factory, new RectangularShape(20, 20, 75, 75), "Production Room 1");
@@ -107,7 +112,12 @@ public class SimulatorApplication {
 	        public void run() {
 				final PersistenceClient persistenceClient = new PersistenceClient(persistenceHost, persistencePort);
 				final RemoteFileCanvasChooser canvasChooser = new RemoteFileCanvasChooser("factory", "Puck Factory", persistenceClient);
-				final Component factoryViewer = new CanvasViewer(new SimulatorController(factory, new RemoteFactoryPersistenceManager(canvasChooser, persistenceClient)));
+				// The simulation runs on the simulation service, which reads the factory from the persistence server:
+				// the factory must be saved before being simulated.
+				final Component factoryViewer = new CanvasViewer(new RemoteSimulatorController(factory,
+																							   new RemoteFactoryPersistenceManager(canvasChooser, persistenceClient),
+																							   simulationHost,
+																							   simulationPort));
 				canvasChooser.setViewer(factoryViewer);
 				//new CanvasViewer(factory);
 			}

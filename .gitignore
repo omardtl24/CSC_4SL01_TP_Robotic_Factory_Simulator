@@ -4,5 +4,6 @@
 **/.vscode/
 **/*.factory
 **.log
+**/*.log.[0-9]*
 **/*.log.lck
 robotsim/data/

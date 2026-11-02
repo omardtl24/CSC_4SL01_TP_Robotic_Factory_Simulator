@@ -12,7 +12,7 @@ The project is a Maven multi-module build with three programs:
 |---|---|---|---|---|
 | Persistence server | `robotsim` | `fr.tp.inf112.projects.robotsim.persistence.PersistenceServer` | 8090 (socket) | Stores the factory models (Java serialization) in `robotsim/data/`. |
 | Simulation service | `simulation-service` | `fr.tp.slr201.projects.robotsim.service.simulation.SimulationServiceApplication` | 8080 (HTTP) | Spring Boot REST service that reads models from the persistence server and simulates them. |
-| Simulator | `robotsim` | `fr.tp.inf112.projects.robotsim.app.SimulatorApplication` | none | Swing user interface displaying the factory. |
+| Simulator | `robotsim` | `fr.tp.inf112.projects.robotsim.app.SimulatorApplication` | none | Swing user interface displaying the factory simulated by the simulation service. |
 
 ```
 pom.xml                       parent: Java 17, Spring Boot and library versions, plugin versions
@@ -78,14 +78,28 @@ mvn test               # only runs the tests
 mvn package -DskipTests
 ```
 
-The tests are in the `simulation-service` module:
+Tests of the `robotsim` module (plain JUnit, no server needed):
 
-- `FactoryJsonSerializationTest` converts a factory model to JSON and back with the object mapper of the Spring
-  context, and checks that the model is unchanged, that the components still refer to their factory, that shared
-  components (robot targets, room areas and doors...) are not duplicated, that derived and runtime attributes are
-  not serialized, and that the round-trip model can still be simulated.
+- `model.FactoryJsonSerializationTest` converts a factory model to JSON and back with `FactoryObjectMapper`, and
+  checks that the model is unchanged, that the components still refer to their factory, that shared components
+  (robot targets, room areas and doors...) are not duplicated, that derived and runtime attributes are not
+  serialized, that classes outside of the model are rejected, that the round-trip model can still be simulated and
+  that Java serialization (used by the persistence server) still works.
+- `app.RemoteSimulatorControllerTest` drives the remote controller against `FakeSimulationService`, a small server
+  with the same REST methods running on the HTTP server of the JDK. It checks that the factory is simulated by the
+  service and not locally, that the viewer displays and is notified of the models read from the service, that
+  stopping ends the simulation and the updates, and the error cases (unsaved factory, unknown factory, service not
+  running).
+
+Tests of the `simulation-service` module:
+
+- `FactoryJsonSerializationTest` runs the same kind of round-trip checks with the object mapper of the Spring
+  context, which also checks that Spring uses `FactoryObjectMapper`.
 - `SimulationControllerTest` calls the REST methods with MockMvc, using an in-memory persistence manager instead
   of the persistence server, and parses the returned JSON as a client of the service would.
+
+To run the tests of a single module: `mvn test -pl robotsim`, or `mvn test -pl simulation-service -am` (the `-am`
+option also builds `robotsim`, which the simulation service depends on).
 
 ## Running
 
@@ -135,6 +149,59 @@ logging configuration of `robotsim/config/logging.properties`.
 2. Run the persistence server and the simulator with the launch configurations of `robotsim/config/`
    (`PersistenceServer`, `SimulatorApplication`, or `ServerAndSimulator` for both).
 3. Run the simulation service with *Run As > Spring Boot App* on `SimulationServiceApplication`.
+
+## How a simulation runs
+
+The simulator window does not simulate anything: it uses `RemoteSimulatorController`, so the robots are moved by
+the simulation service, and the window only displays copies of the simulated model that it downloads from the
+service. Each program holds its own copy of the factory and they only exchange copies over the network:
+
+| Program | Copy of the factory | Role |
+|---|---|---|
+| Simulator window | The model currently displayed | Draws it and sends the start and stop requests. |
+| Simulation service | The model being simulated | Moves the robots. |
+| Persistence server | The saved files in `robotsim/data/` | Stores the factories and sends them back. |
+
+### Step by step
+
+1. **Launch.** `SimulatorApplication` builds a factory and the window displays it. This factory has no identifier
+   and is only known by the window.
+2. **Save.** The window sends a copy of the factory (Java serialization) to the persistence server, which writes it
+   to `robotsim/data/<name>`. The file name becomes the identifier of the factory.
+3. **Start.** The window calls `GET /simulation/start/{id}`. The service reads the factory from the persistence
+   server, keeps this copy, starts the threads of its robots and answers `true`. The window then starts an update
+   thread. The factory of the window itself never moves.
+4. **While the simulation runs**, every 100 ms the update thread calls `GET /simulation/{id}`, parses the JSON text
+   into a new `Factory` object and passes it to `setCanvas()`, which moves the viewer (the observer of the model) to
+   the new object and notifies it. The viewer always draws the model of its controller, so it displays the latest
+   copy of the simulated factory, replaced about ten times per second.
+5. **Stop.** The window calls `GET /simulation/stop/{id}`: the service stops the robots and forgets its copy. The
+   window stops its update thread and marks the last copy it received as stopped, which updates the menus. The
+   robots stay displayed where they were when the simulation was stopped.
+
+```
+Window ── GET /simulation/start/{id} ──► Simulation service ── read {id} ──► Persistence server
+                                           │◄──────────── saved factory ──────────┘
+                                           │ simulates its copy
+Window ◄──── every 100 ms: JSON copy ──────┤
+Window ── GET /simulation/stop/{id} ───► │ stops and forgets its copy
+```
+
+### Consequences
+
+- **Only saved factories can be simulated.** The service reads the factory from the persistence server when the
+  simulation starts. Starting a factory that was never saved only logs a warning in the console of the simulator.
+- **Starting again after a stop restarts from the saved file**, not from the positions where the robots were
+  stopped, since the service forgets its copy when the simulation stops. To continue from the current positions,
+  save the displayed factory before starting again.
+- **Opening** a factory loads it from the persistence server and displays it with the identifier of its file;
+  starting then simulates that file.
+- **Several windows simulating the same identifier share one simulation**: the service answers that the factory is
+  already simulated, and every window displays the same robots.
+- **If the service stops simulating the factory** (for instance because it was restarted), the window receives a
+  404 answer, stops updating and marks the simulation as stopped.
+- **The persistence server is only used to save, open and start factories.** It is not involved while a
+  simulation runs.
 
 ## Using the simulation service
 

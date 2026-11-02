@@ -8,6 +8,13 @@
 #   tools/run.sh simulator    only runs the simulator user interface (robotsim module).
 set -euo pipefail
 
+MODE="${1:-all}"
+
+case "$MODE" in
+	all|persistence|simulation|simulator) ;;
+	*) echo "Usage: $0 [all|persistence|simulation|simulator]" >&2; exit 2 ;;
+esac
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -52,7 +59,7 @@ run_simulation() {
 	exec java -jar target/simulation-service-*.jar
 }
 
-case "${1:-all}" in
+case "$MODE" in
 	persistence) run_persistence ;;
 	simulation) run_simulation ;;
 	simulator) run_simulator ;;
@@ -70,5 +77,4 @@ case "${1:-all}" in
 
 		( run_simulator )
 		;;
-	*) echo "Usage: $0 [all|persistence|simulation|simulator]" >&2; exit 2 ;;
 esac

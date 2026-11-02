@@ -8,7 +8,8 @@ import fr.tp.inf112.projects.robotsim.model.Factory;
 
 public class SimulatorController implements CanvasViewerController {
 	
-	private Factory factoryModel;
+	// Volatile since the remote controller replaces it from another thread than the one painting the viewer.
+	private volatile Factory factoryModel;
 	
 	private final CanvasPersistenceManager persistenceManager;
 	
